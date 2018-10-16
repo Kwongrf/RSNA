@@ -27,7 +27,11 @@ ROOT_DIR = "/data/krf/model/rsna"
 # In[27]:
 
 
+<<<<<<< HEAD
 IMG_SIZE =256
+=======
+IMG_SIZE = 256
+>>>>>>> 4c868fc6388ae085ba408226a0a66322a948e61c
 def loadDataset():
     image_fp = os.listdir(DATA_DIR)
     image_fp.sort()
@@ -131,10 +135,17 @@ from keras.backend.tensorflow_backend import set_session
 
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
+<<<<<<< HEAD
 config.gpu_options.per_process_gpu_memory_fraction = 0.4
 set_session(tf.Session(config=config))
 
 CONFIG_FP = 'unet/configs/krf.json'
+=======
+config.gpu_options.per_process_gpu_memory_fraction = 0.15
+set_session(tf.Session(config=config))
+
+CONFIG_FP = 'unet/configs/11.json'
+>>>>>>> 4c868fc6388ae085ba408226a0a66322a948e61c
 name = os.path.basename(CONFIG_FP).split('.')[0]
 print(name)
 
