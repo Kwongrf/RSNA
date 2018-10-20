@@ -16,11 +16,19 @@ import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
 import skimage.io as io
 import skimage.transform as trans
+from keras.callbacks import (
+    EarlyStopping,
+    ReduceLROnPlateau,
+    ModelCheckpoint,
+    CSVLogger,
+    TensorBoard,
+)
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
-config.gpu_options.per_process_gpu_memory_fraction = 0.4
+#config.gpu_options.per_process_gpu_memory_fraction = 0.6
 set_session(tf.Session(config=config))
 
 DATA_DIR = '/data/krf/dataset'
@@ -86,7 +94,7 @@ class DetectorConfig(Config):
     DETECTION_MIN_CONFIDENCE = 0.4  ## match target distribution
     DETECTION_NMS_THRESHOLD = 0.1
 
-    STEPS_PER_EPOCH = 1600
+    STEPS_PER_EPOCH = 200
 
 config = DetectorConfig()
 config.display()
@@ -116,7 +124,7 @@ class DetectorDataset(utils.Dataset):
         fp = info['path']
         pid = fp.split('/')[-1].split('.')[0]
         image = cv2.imread(os.path.join(train_seg_dir,pid+".png"))
-        image = trans.resize(image,(1024,1024))
+        #image = trans.resize(image,(1024,1024))
         #ds = pydicom.read_file(fp)
         #image = ds.pixel_array
         # If grayscale. Convert to RGB for consistency.
@@ -136,10 +144,10 @@ class DetectorDataset(utils.Dataset):
             class_ids = np.zeros((count,), dtype=np.int32)
             for i, a in enumerate(annotations):
                 if a['Target'] == 1:
-                    x = int(a['x'])
-                    y = int(a['y'])
-                    w = int(a['width'])
-                    h = int(a['height'])
+                    x = int(a['x']/4)
+                    y = int(a['y']/4)
+                    w = int(a['width']/4)
+                    h = int(a['height']/4)
                     mask_instance = mask[:, :, i].copy()
                     cv2.rectangle(mask_instance, (x, y), (x+w, y+h), 255, -1)
                     mask[:, :, i] = mask_instance
@@ -157,7 +165,7 @@ ds = pydicom.read_file(image_fps[0]) # read dicom image from filepath
 image = ds.pixel_array # get image array
 
 # Original DICOM image size: 1024 x 1024
-ORIG_SIZE = 1024
+ORIG_SIZE = 256#1024
 
 image_fps_list = list(image_fps)
 random.seed(42)
@@ -245,14 +253,14 @@ model.load_weights(COCO_WEIGHTS_PATH, by_name=True, exclude=[
 
 
 
-LEARNING_RATE = 0.004
+LEARNING_RATE = 0.0001
 
 # Train Mask-RCNN Model 
 import warnings 
 warnings.filterwarnings("ignore")
 
 
-## train heads with higher lr to speedup the learning
+# train heads with higher lr to speedup the learning
 model.train(dataset_train, dataset_val,
             learning_rate=LEARNING_RATE*2,
             epochs=2,
@@ -264,16 +272,6 @@ history = model.keras_model.history.history
 
 model.train(dataset_train, dataset_val,
             learning_rate=LEARNING_RATE,
-            epochs=6,
-            layers='all',
-            augmentation=augmentation)
-
-new_history = model.keras_model.history.history
-for k in new_history: history[k] = history[k] + new_history[k]
-
-
-model.train(dataset_train, dataset_val,
-            learning_rate=LEARNING_RATE/5,
             epochs=20,
             layers='all',
             augmentation=augmentation)
@@ -281,9 +279,19 @@ model.train(dataset_train, dataset_val,
 new_history = model.keras_model.history.history
 for k in new_history: history[k] = history[k] + new_history[k]
 
+
+# model.train(dataset_train, dataset_val,
+#             learning_rate=LEARNING_RATE/5,
+#             epochs=15,
+#             layers='all',
+#             augmentation=augmentation)
+
+# new_history = model.keras_model.history.history
+# for k in new_history: history[k] = history[k] + new_history[k]
+
 # model.train(dataset_train, dataset_val,
 #             learning_rate = 0.0001,
-#             epochs=40,
+#             epochs=30,
 #             layers='all',
 #             augmentation=augmentation)
 # new_history = model.keras_model.history.history
@@ -415,7 +423,8 @@ test_image_fps = get_dicom_fps(test_dicom_dir)
 # Make predictions on test images, write out sample submission
 def predict(image_fps, filepath='submission.csv', min_conf=0.95):
     # assume square image
-    resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
+    # resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
+    resize_factor = 0.25
     #resize_factor = ORIG_SIZE
     with open(filepath, 'w') as file:
         file.write("patientId,PredictionString\n")
@@ -424,7 +433,7 @@ def predict(image_fps, filepath='submission.csv', min_conf=0.95):
             #ds = pydicom.read_file(image_id)
             pid = image_id.split('/')[-1].split('.')[0]
             image = cv2.imread(os.path.join(test_seg_dir,pid+".png"))
-            image = trans.resize(image,(1024,1024))
+            #image = trans.resize(image,(1024,1024))
             #image = ds.pixel_array
             # If grayscale. Convert to RGB for consistency.
             if len(image.shape) != 3 or image.shape[2] != 3:
@@ -461,13 +470,13 @@ def predict(image_fps, filepath='submission.csv', min_conf=0.95):
                         y1 = r['rois'][i][0]
                         width = r['rois'][i][3] - x1
                         height = r['rois'][i][2] - y1
-                        bboxes_str = "{} {} {} {}".format(x1*resize_factor, y1*resize_factor, \
-                                                           width*resize_factor, height*resize_factor)
+                        bboxes_str = "{} {} {} {}".format(int(x1*resize_factor), int(y1*resize_factor), \
+                                                           int(width*resize_factor), int(height*resize_factor))
                         out_str += bboxes_str
 
             file.write(out_str+"\n")
 
-submission_fp = os.path.join(ROOT_DIR, 'seg_submission1016.csv')
+submission_fp = os.path.join(ROOT_DIR, 'seg_submission1018.csv')
 predict(test_image_fps, filepath=submission_fp)
 print(submission_fp)
 
@@ -528,7 +537,7 @@ def visualize():
     pid = image_id.split('/')[-1].split('.')[0]
     #print(pid)
     image = cv2.imread(os.path.join(test_seg_dir,pid+".png"))
-    image = trans.resize(image,(1024,1024))
+    #image = trans.resize(image,(1024,1024))
     # assume square image 
     resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
     
@@ -544,7 +553,7 @@ def visualize():
 
     patient_id = os.path.splitext(os.path.basename(image_id))[0]
     print(patient_id)
-    plt.imshow(resized_image, cmap=plt.cm.gist_gray)
+    #plt.imshow(resized_image, cmap=plt.cm.gist_gray)
     results = model.detect([resized_image])
     print(results[0])
     r = results[0]
@@ -554,6 +563,7 @@ def visualize():
         y1 = int(bbox[0] * resize_factor)
         x2 = int(bbox[3] * resize_factor)
         y2 = int(bbox[2] * resize_factor)
+        
         cv2.rectangle(o_image, (x1,y1), (x2,y2), (77, 255, 9), 3, 1)
         width = x2 - x1 
         height = y2 - y1 
