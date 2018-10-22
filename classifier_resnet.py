@@ -24,10 +24,10 @@ from pathlib import Path
 
 PATH = Path("/data/krf/dataset")
 train_bb_df = pd.read_csv(PATH/'stage_1_train_labels.csv')
-train_bb_df.head()
+print(train_bb_df.head())
 
 train_bb_df['duplicate'] = train_bb_df.duplicated(['patientId'],keep=False)
-train_bb_df[train_bb_df['duplicate']].head()
+print(train_bb_df[train_bb_df['duplicate']].head())
 
 detailed_df = pd.read_csv(PATH/'stage_1_detailed_class_info.csv')
 # merge two df
@@ -36,7 +36,7 @@ class_df = train_bb_df.merge(detailed_df,on="patientId")
 csv_df = class_df.filter(['patientId','Target'],)
 csv_df = csv_df.set_index('patientId',)
 #class_df.head(10)
-csv_df.head(10)
+print(csv_df.head(10))
 
 class CDataset(Dataset):
     def __init__(self,ds,img_dir,class_df,transform=None,ext=None):
@@ -76,7 +76,7 @@ train_ds = CDataset(train,img_dir,class_df,transform=transform)
 test_ds = CDataset(test,img_dir,class_df,transform=transform)
 
 
-batch_size=32
+batch_size=128
 sz=224
 train_dl = DataLoader(train_ds,batch_size = batch_size)
 test_dl = DataLoader(test_ds,batch_size=batch_size)
@@ -103,18 +103,20 @@ def draw_text(ax,xy,txt,sz=14):
     draw_outline(text,1)
     
     
-image,klass = next(iter(train_dl))
-fig,axes = plt.subplots(1,4,figsize=(12,2))
-for i,ax in enumerate(axes.flat):
-    image,klass
-    ima=image[i][0]
-    b = klass[i]
-    ax = show_img(ima,ax=ax)
-    draw_text(ax,(0,0),b)
+#image,klass = next(iter(train_dl))
+#fig,axes = plt.subplots(1,4,figsize=(12,2))
+#for i,ax in enumerate(axes.flat):
+#    image,klass
+#    ima=image[i][0]
+#    b = klass[i]
+#    ax = show_img(ima,ax=ax)
+#    draw_text(ax,(0,0),b)
     
 #plt.tight_layout()
 
 use_gpu = torch.cuda.is_available()
+print("Use gpu = {}".format(use_gpu))
+
 dataloaders = {'train':train_dl,'val':test_dl}
 
 def train_model(model,criterion,optimizer,scheduler,num_epochs=25):
@@ -138,6 +140,7 @@ def train_model(model,criterion,optimizer,scheduler,num_epochs=25):
             
             #Iterate over data
             data_loader = dataloaders[phase]
+            step = 0
             for data in data_loader:
                 #get the inputs
                 inputs,labels = data
@@ -164,7 +167,8 @@ def train_model(model,criterion,optimizer,scheduler,num_epochs=25):
                 # statistics
                 running_loss += loss.data[0] * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
-                
+                print("Epoch:{} Step:{} running_loss:{} running_corrects:{}".format(epoch,step,running_loss,running_corrects))
+                step += 1
             epoch_loss = running_loss / len(data_loader.dataset)
             epoch_acc = float(running_corrects) / len(data_loader.dataset)
             #print(running_corrects,running_loss,len(data_loader.dataset))
@@ -197,7 +201,7 @@ optimizer_ft = optim.Adam(model_ft.parameters())
 
 exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft,step_size=7,gamma=0.1)
 since = time.time()
-
-model_ft = train_model(model_ft,criterion,optimizer_ft,exp_lr_scheduler,num_epochs=30)
+print("Start training")
+model_ft = train_model(model_ft,criterion,optimizer_ft,exp_lr_scheduler,num_epochs=20)
 # Save the model checkpoint
 torch.save(model_ft.state_dict(), 'resnet.ckpt')

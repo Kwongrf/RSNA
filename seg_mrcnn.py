@@ -94,7 +94,7 @@ class DetectorConfig(Config):
     DETECTION_MIN_CONFIDENCE = 0.4  ## match target distribution
     DETECTION_NMS_THRESHOLD = 0.1
 
-    STEPS_PER_EPOCH = 200
+    STEPS_PER_EPOCH = 1600
 
 config = DetectorConfig()
 config.display()
@@ -253,7 +253,7 @@ model.load_weights(COCO_WEIGHTS_PATH, by_name=True, exclude=[
 
 
 
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.0002
 
 # Train Mask-RCNN Model 
 import warnings 
@@ -272,7 +272,7 @@ history = model.keras_model.history.history
 
 model.train(dataset_train, dataset_val,
             learning_rate=LEARNING_RATE,
-            epochs=20,
+            epochs=10,
             layers='all',
             augmentation=augmentation)
 
@@ -280,14 +280,14 @@ new_history = model.keras_model.history.history
 for k in new_history: history[k] = history[k] + new_history[k]
 
 
-# model.train(dataset_train, dataset_val,
-#             learning_rate=LEARNING_RATE/5,
-#             epochs=15,
-#             layers='all',
-#             augmentation=augmentation)
+model.train(dataset_train, dataset_val,
+            learning_rate=LEARNING_RATE/2,
+            epochs=20,
+            layers='all',
+            augmentation=augmentation)
 
-# new_history = model.keras_model.history.history
-# for k in new_history: history[k] = history[k] + new_history[k]
+new_history = model.keras_model.history.history
+for k in new_history: history[k] = history[k] + new_history[k]
 
 # model.train(dataset_train, dataset_val,
 #             learning_rate = 0.0001,
@@ -476,7 +476,7 @@ def predict(image_fps, filepath='submission.csv', min_conf=0.95):
 
             file.write(out_str+"\n")
 
-submission_fp = os.path.join(ROOT_DIR, 'seg_submission1018.csv')
+submission_fp = os.path.join(ROOT_DIR, 'seg_submission1020.csv')
 predict(test_image_fps, filepath=submission_fp)
 print(submission_fp)
 
@@ -539,8 +539,8 @@ def visualize():
     image = cv2.imread(os.path.join(test_seg_dir,pid+".png"))
     #image = trans.resize(image,(1024,1024))
     # assume square image 
-    resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
-    
+    #resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
+    resize_factor = 0.4
     # If grayscale. Convert to RGB for consistency.
     if len(image.shape) != 3 or image.shape[2] != 3:
         image = np.stack((image,) * 3, -1) 

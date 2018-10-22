@@ -1,11 +1,11 @@
 # hdf5
 *.h5
-
+*.ckpt
 pneumonia*
 *.AM72
 *.hdf5
 *.png
-
+*.tar
 unet
 nohup.out
 .ipynb_checkpoints
