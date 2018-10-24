@@ -76,7 +76,7 @@ train_ds = CDataset(train,img_dir,class_df,transform=transform)
 test_ds = CDataset(test,img_dir,class_df,transform=transform)
 
 
-batch_size=128
+batch_size=32
 sz=224
 train_dl = DataLoader(train_ds,batch_size = batch_size)
 test_dl = DataLoader(test_ds,batch_size=batch_size)

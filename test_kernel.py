@@ -1,26 +1,26 @@
 
-import os
+import os 
 import sys
 import random
 import math
 import numpy as np
 import cv2
-import matplotlib as mpl
-mpl.use('Agg')
 import matplotlib.pyplot as plt
 import json
 import pydicom
 from imgaug import augmenters as iaa
 from tqdm import tqdm
-import pandas as pd
+import pandas as pd 
 import glob
 #from sklearn.model_selection import KFold
-
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
 config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.3
+config.gpu_options.allow_growth = True
+#config.gpu_options.per_process_gpu_memory_fraction = 0.5
 set_session(tf.Session(config=config))
+
+os.environ['CUDA_VISIBLE_DEVICES']="0"
 
 #DATA_DIR = '/kaggle/input'
 DATA_DIR = '/data/krf/dataset'
@@ -45,47 +45,46 @@ def get_dicom_fps(dicom_dir):
     dicom_fps = glob.glob(dicom_dir+'/'+'*.dcm')
     return list(set(dicom_fps))
 
-def parse_dataset(dicom_dir, anns):
+def parse_dataset(dicom_dir, anns): 
     image_fps = get_dicom_fps(dicom_dir)
     image_annotations = {fp: [] for fp in image_fps}
-    for index, row in anns.iterrows():
+    for index, row in anns.iterrows(): 
         fp = os.path.join(dicom_dir, row['patientId']+'.dcm')
         image_annotations[fp].append(row)
-    return image_fps, image_annotations
+    return image_fps, image_annotations 
 
 
 
-# The following parameters have been selected to reduce running time for demonstration purposes
-# These are not optimal
+# The following parameters have been selected to reduce running time for demonstration purposes 
+# These are not optimal 
 
 class DetectorConfig(Config):
     """Configuration for training pneumonia detection on the RSNA pneumonia dataset.
     Overrides values in the base Config class.
     """
-
-    # Give the configuration a recognizable name
+    
+    # Give the configuration a recognizable name  
     NAME = 'pneumonia'
-
+    
     # Train on 1 GPU and 8 images per GPU. We can put multiple images on each
     # GPU because the images are small. Batch size is 8 (GPUs * images/GPU).
     GPU_COUNT = 1
     IMAGES_PER_GPU = 8
-
+    
     BACKBONE = 'resnet50'
-
+    
     NUM_CLASSES = 2  # background + 1 pneumonia classes
-
-    IMAGE_MIN_DIM = 64
-    IMAGE_MAX_DIM = 64
-    RPN_ANCHOR_SCALES = (16, 32)
-    TRAIN_ROIS_PER_IMAGE = 8
-    MAX_GT_INSTANCES = 4
+    
+    IMAGE_MIN_DIM = 256
+    IMAGE_MAX_DIM = 256
+    RPN_ANCHOR_SCALES = (16, 32, 64, 128)
+    TRAIN_ROIS_PER_IMAGE = 32
+    MAX_GT_INSTANCES = 3
     DETECTION_MAX_INSTANCES = 3
-    DETECTION_MIN_CONFIDENCE = 0.78  ## match target distribution
-    DETECTION_NMS_THRESHOLD = 0.01
+    DETECTION_MIN_CONFIDENCE = 0.7  ## match target distribution
+    DETECTION_NMS_THRESHOLD = 0.1
 
-    STEPS_PER_EPOCH = 50
-
+    STEPS_PER_EPOCH = 200
 config = DetectorConfig()
 config.display()
 
@@ -95,16 +94,16 @@ class DetectorDataset(utils.Dataset):
 
     def __init__(self, image_fps, image_annotations, orig_height, orig_width):
         super().__init__(self)
-
+        
         # Add classes
         self.add_class('pneumonia', 1, 'Lung Opacity')
-
-        # add images
+        
+        # add images 
         for i, fp in enumerate(image_fps):
             annotations = image_annotations[fp]
-            self.add_image('pneumonia', image_id=i, path=fp,
+            self.add_image('pneumonia', image_id=i, path=fp, 
                            annotations=annotations, orig_height=orig_height, orig_width=orig_width)
-
+            
     def image_reference(self, image_id):
         info = self.image_info[image_id]
         return info['path']
@@ -148,16 +147,16 @@ anns.head()
 
 image_fps, image_annotations = parse_dataset(train_dicom_dir, anns=anns)
 
-ds = pydicom.read_file(image_fps[0]) # read dicom image from filepath
+ds = pydicom.read_file(image_fps[0]) # read dicom image from filepath 
 image = ds.pixel_array # get image array
 
 # Original DICOM image size: 1024 x 1024
 ORIG_SIZE = 1024
 
-image_fps_list = list(image_fps[:10000])
+image_fps_list = list(image_fps)
 random.seed(42)
 random.shuffle(image_fps_list)
-val_size = 1000
+val_size = 1500
 image_fps_val = image_fps_list[:val_size]
 image_fps_train = image_fps_list[val_size:]
 
@@ -168,7 +167,7 @@ print(len(image_fps_train), len(image_fps_val))
 dataset_train = DetectorDataset(image_fps_train, image_annotations, ORIG_SIZE, ORIG_SIZE)
 dataset_train.prepare()
 
-# Show annotation(s) for a DICOM image
+# Show annotation(s) for a DICOM image 
 test_fp = random.choice(image_fps_train)
 image_annotations[test_fp]
 
@@ -178,7 +177,7 @@ dataset_val.prepare()
 
 
 # Load and display random sample and their bounding boxes
-import matplotlib.pyplot as plt
+
 class_ids = [0]
 while class_ids[0] == 0:  ## look for a mask
     image_id = random.choice(dataset_train.image_ids)
@@ -232,76 +231,93 @@ _ = plt.imshow(imggrid[:, :, 0], cmap='gray')
 
 model = modellib.MaskRCNN(mode='training', config=config, model_dir=ROOT_DIR)
 
-# Exclude the last layers because they require a matching
-# number of classes
-model.load_weights(COCO_WEIGHTS_PATH, by_name=True, exclude=[
-    "mrcnn_class_logits", "mrcnn_bbox_fc",
-    "mrcnn_bbox", "mrcnn_mask"])
+# # Exclude the last layers because they require a matching
+# # number of classes
+# model.load_weights(COCO_WEIGHTS_PATH, by_name=True, exclude=[
+#     "mrcnn_class_logits", "mrcnn_bbox_fc",
+#     "mrcnn_bbox", "mrcnn_mask"])
 
 
 
-LEARNING_RATE = 0.004
+# LEARNING_RATE = 0.002
 
-# Train Mask-RCNN Model
-import warnings
-warnings.filterwarnings("ignore")
-
-## train heads with higher lr to speedup the learning
-model.train(dataset_train, dataset_val,
-            learning_rate=LEARNING_RATE*2,
-            epochs=1,
-            layers='heads',
-            augmentation=None)  ## no need to augment yet
-
-history = model.keras_model.history.history
+# # Train Mask-RCNN Model 
+# import warnings 
+# warnings.filterwarnings("ignore")
 
 
-model.train(dataset_train, dataset_val,
-            learning_rate=LEARNING_RATE,
-            epochs=3,
-            layers='all',
-            augmentation=augmentation)
+# ## train heads with higher lr to speedup the learning
+# model.train(dataset_train, dataset_val,
+#             learning_rate=LEARNING_RATE*2,
+#             epochs=2,
+#             layers='heads',
+#             augmentation=None)  ## no need to augment yet
 
-new_history = model.keras_model.history.history
-for k in new_history: history[k] = history[k] + new_history[k]
-
-
-model.train(dataset_train, dataset_val,
-            learning_rate=LEARNING_RATE/5,
-            epochs=6,
-            layers='all',
-            augmentation=augmentation)
-
-new_history = model.keras_model.history.history
-for k in new_history: history[k] = history[k] + new_history[k]
+# history = model.keras_model.history.history
 
 
-epochs = range(1,len(next(iter(history.values())))+1)
-pd.DataFrame(history, index=epochs)
+# model.train(dataset_train, dataset_val,
+#             learning_rate=LEARNING_RATE,
+#             epochs=6,
+#             layers='all',
+#             augmentation=augmentation)
+
+# new_history = model.keras_model.history.history
+# for k in new_history: history[k] = history[k] + new_history[k]
 
 
-plt.figure(figsize=(17,5))
+# model.train(dataset_train, dataset_val,
+#             learning_rate=LEARNING_RATE/5,
+#             epochs=20,
+#             layers='all',
+#             augmentation=augmentation)
 
-plt.subplot(131)
-plt.plot(epochs, history["loss"], label="Train loss")
-plt.plot(epochs, history["val_loss"], label="Valid loss")
-plt.legend()
-plt.subplot(132)
-plt.plot(epochs, history["mrcnn_class_loss"], label="Train class ce")
-plt.plot(epochs, history["val_mrcnn_class_loss"], label="Valid class ce")
-plt.legend()
-plt.subplot(133)
-plt.plot(epochs, history["mrcnn_bbox_loss"], label="Train box loss")
-plt.plot(epochs, history["val_mrcnn_bbox_loss"], label="Valid box loss")
-plt.legend()
+# new_history = model.keras_model.history.history
+# for k in new_history: history[k] = history[k] + new_history[k]
 
-plt.show()
+# model.train(dataset_train, dataset_val,
+#             learning_rate = 0.0001,
+#             epochs=40,
+#             layers='all',
+#             augmentation=augmentation)
+# new_history = model.keras_model.history.history
+# for k in new_history: history[k] = history[k] + new_history[k]
 
-best_epoch = np.argmin(history["val_loss"])
-print("Best Epoch:", best_epoch + 1)
+# model.train(dataset_train, dataset_val,
+#             learning_rate = 0.00001,
+#             epochs=60,
+#             layers='all',
+#             augmentation=augmentation)
+# new_history = model.keras_model.history.history
+# for k in new_history: history[k] = history[k] + new_history[k]
+
+# epochs = range(1,len(next(iter(history.values())))+1)
+# pd.DataFrame(history, index=epochs)
 
 
-## select trained model
+# plt.figure(figsize=(17,5))
+
+# plt.subplot(131)
+# plt.plot(epochs, history["loss"], label="Train loss")
+# plt.plot(epochs, history["val_loss"], label="Valid loss")
+# plt.legend()
+# plt.subplot(132)
+# plt.plot(epochs, history["mrcnn_class_loss"], label="Train class ce")
+# plt.plot(epochs, history["val_mrcnn_class_loss"], label="Valid class ce")
+# plt.legend()
+# plt.subplot(133)
+# plt.plot(epochs, history["mrcnn_bbox_loss"], label="Train box loss")
+# plt.plot(epochs, history["val_mrcnn_bbox_loss"], label="Valid box loss")
+# plt.legend()
+
+# plt.show()
+# plt.savefig(ROOT_DIR+"/log.png")
+
+# best_epoch = np.argmin(history["val_loss"])
+# print("Best Epoch:", best_epoch + 1)
+
+best_epoch = 25
+## select trained model 
 dir_names = next(os.walk(model.model_dir))[1]
 key = config.NAME.lower()
 dir_names = filter(lambda f: f.startswith(key), dir_names)
@@ -312,11 +328,11 @@ if not dir_names:
     raise FileNotFoundError(
         errno.ENOENT,
         "Could not find model directory under {}".format(self.model_dir))
-
+    
 fps = []
 # Pick last directory
-#for d in dir_names:
-d = dir_names[-1]
+#for d in dir_names: 
+d = dir_names[-1]    
 dir_name = os.path.join(model.model_dir, d)
 # Find the last checkpoint
 checkpoints = next(os.walk(dir_name))[2]
@@ -341,7 +357,7 @@ class InferenceConfig(DetectorConfig):
 inference_config = InferenceConfig()
 
 # Recreate the model in inference mode
-model = modellib.MaskRCNN(mode='inference',
+model = modellib.MaskRCNN(mode='inference', 
                           config=inference_config,
                           model_dir=ROOT_DIR)
 
@@ -360,29 +376,29 @@ def get_colors_for_class_ids(class_ids):
     return colors
 
 
-# Show few example of ground truth vs. predictions on the validation dataset
+# Show few example of ground truth vs. predictions on the validation dataset 
 dataset = dataset_val
 fig = plt.figure(figsize=(10, 30))
 
 for i in range(6):
 
     image_id = random.choice(dataset.image_ids)
-
+    
     original_image, image_meta, gt_class_id, gt_bbox, gt_mask =\
-        modellib.load_image_gt(dataset_val, inference_config,
+        modellib.load_image_gt(dataset_val, inference_config, 
                                image_id, use_mini_mask=False)
-
+    
     print(original_image.shape)
     plt.subplot(6, 2, 2*i + 1)
-    visualize.display_instances(original_image, gt_bbox, gt_mask, gt_class_id,
+    visualize.display_instances(original_image, gt_bbox, gt_mask, gt_class_id, 
                                 dataset.class_names,
                                 colors=get_colors_for_class_ids(gt_class_id), ax=fig.axes[-1])
-
+    
     plt.subplot(6, 2, 2*i + 2)
     results = model.detect([original_image]) #, verbose=1)
     r = results[0]
-    visualize.display_instances(original_image, r['rois'], r['masks'], r['class_ids'],
-                                dataset.class_names, r['scores'],
+    visualize.display_instances(original_image, r['rois'], r['masks'], r['class_ids'], 
+                                dataset.class_names, r['scores'], 
                                 colors=get_colors_for_class_ids(r['class_ids']), ax=fig.axes[-1])
 
 
@@ -391,7 +407,7 @@ test_image_fps = get_dicom_fps(test_dicom_dir)
 
 
 # Make predictions on test images, write out sample submission
-def predict(image_fps, filepath='test_submission.csv', min_conf=0.95):
+def predict(image_fps, filepath='submission.csv', min_conf=0.9):
     # assume square image
     resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
     #resize_factor = ORIG_SIZE
@@ -442,7 +458,7 @@ def predict(image_fps, filepath='test_submission.csv', min_conf=0.95):
 
             file.write(out_str+"\n")
 
-submission_fp = os.path.join(ROOT_DIR, 'submission.csv')
+submission_fp = os.path.join(ROOT_DIR, 'submission_1024testkernel2.csv')
 predict(test_image_fps, filepath=submission_fp)
 print(submission_fp)
 
@@ -451,19 +467,19 @@ output.head(60)
 
 
 # show a few test image detection example
-def visualize():
+def visualize(): 
     image_id = random.choice(test_image_fps)
     ds = pydicom.read_file(image_id)
-
-    # original image
+    
+    # original image 
     image = ds.pixel_array
-
-    # assume square image
+    
+    # assume square image 
     resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
-
+    
     # If grayscale. Convert to RGB for consistency.
     if len(image.shape) != 3 or image.shape[2] != 3:
-        image = np.stack((image,) * 3, -1)
+        image = np.stack((image,) * 3, -1) 
     resized_image, window, scale, padding, crop = utils.resize_image(
         image,
         min_dim=config.IMAGE_MIN_DIM,
@@ -476,20 +492,114 @@ def visualize():
 
     results = model.detect([resized_image])
     r = results[0]
-    for bbox in r['rois']:
+    for bbox in r['rois']: 
         print(bbox)
         x1 = int(bbox[1] * resize_factor)
         y1 = int(bbox[0] * resize_factor)
         x2 = int(bbox[3] * resize_factor)
         y2 = int(bbox[2]  * resize_factor)
         cv2.rectangle(image, (x1,y1), (x2,y2), (77, 255, 9), 3, 1)
-        width = x2 - x1
-        height = y2 - y1
+        width = x2 - x1 
+        height = y2 - y1 
         print("x {} y {} h {} w {}".format(x1, y1, width, height))
-    plt.figure()
+    plt.figure() 
     plt.imshow(image, cmap=plt.cm.gist_gray)
     plt.savefig(ROOT_DIR+"/"+patient_id+".png")
 visualize()
 visualize()
 visualize()
 visualize()
+
+# helper function to calculate IoU
+def iou(box1, box2):
+    x11, y11, w1, h1 = box1
+    x21, y21, w2, h2 = box2
+    #assert w1 * h1 > 0
+    #assert w2 * h2 > 0
+    x12, y12 = x11 + w1, y11 + h1
+    x22, y22 = x21 + w2, y21 + h2
+
+    area1, area2 = w1 * h1, w2 * h2
+    xi1, yi1, xi2, yi2 = max([x11, x21]), max([y11, y21]), min([x12, x22]), min([y12, y22])
+    
+    if xi2 <= xi1 or yi2 <= yi1:
+        return 0
+    else:
+        intersect = (xi2-xi1) * (yi2-yi1)
+        union = area1 + area2 - intersect
+        return intersect / union
+def map_iou(boxes_true, boxes_pred, scores, thresholds = [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75],min_conf=0.9):
+    """
+    Mean average precision at differnet intersection over union (IoU) threshold
+    
+    input:
+        boxes_true: Mx4 numpy array of ground true bounding boxes of one image. 
+                    bbox format: (x1, y1, w, h)
+        boxes_pred: Nx4 numpy array of predicted bounding boxes of one image. 
+                    bbox format: (x1, y1, w, h)
+        scores:     length N numpy array of scores associated with predicted bboxes
+        thresholds: IoU shresholds to evaluate mean average precision on
+    output: 
+        map: mean average precision of the image
+    """
+    
+    # According to the introduction, images with no ground truth bboxes will not be 
+    # included in the map score unless there is a false positive detection (?)
+        
+    # return None if both are empty, don't count the image in final evaluation (?)
+    if len(boxes_true) == 0 and len(boxes_pred) == 0:
+        return 0
+    
+    assert boxes_true.shape[1] == 4 or boxes_pred.shape[1] == 4, "boxes should be 2D arrays with shape[1]=4"
+    if len(boxes_pred):
+        assert len(scores) == len(boxes_pred), "boxes_pred and scores should be same length"
+        # sort boxes_pred by scores in decreasing order
+        scores = np.array(scores)
+        boxes_pred = boxes_pred[scores>=min_conf]
+        scores = scores[scores>=min_conf]
+        boxes_pred = boxes_pred[np.argsort(scores)[::-1], :]
+        
+    if len(boxes_true) == 0 and len(boxes_pred) == 0:
+        return 0
+    
+    map_total = 0
+    
+    # loop over thresholds
+    for t in thresholds:
+        matched_bt = set()
+        tp, fn = 0, 0
+        for i, bt in enumerate(boxes_true):
+            matched = False
+            for j, bp in enumerate(boxes_pred):
+                miou = iou(bt, bp)
+                if miou >= t and not matched and j not in matched_bt:
+                    matched = True
+                    tp += 1 # bt is matched for the first time, count as TP
+                    matched_bt.add(j)
+            if not matched:
+                fn += 1 # bt has no match, count as FN
+                
+        fp = len(boxes_pred) - len(matched_bt) # FP is the bp that not matched to any bt
+        m = tp / (tp + fn + fp)
+        map_total += m
+    
+    return map_total / len(thresholds)
+# detection on val_data
+def evaluate(dataset_eval):
+    summ = 0.0
+    # assume square image
+    
+    resize_factor = ORIG_SIZE / config.IMAGE_SHAPE[0]
+    #resize_factor = ORIG_SIZE
+    for image_id in tqdm(dataset_eval.image_ids):
+        original_image, image_meta, gt_class_id, gt_bbox, gt_mask =\
+                modellib.load_image_gt(dataset_eval, inference_config, 
+                                       image_id, use_mini_mask=False)
+         
+        results = model.detect([original_image]) #, verbose=1)
+        r = results[0]
+        summ += map_iou(gt_bbox,r['rois'],r['scores'])
+
+    return summ/len(dataset_eval.image_ids)
+
+print(evaluate(dataset_val))
