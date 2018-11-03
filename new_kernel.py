@@ -21,11 +21,11 @@ set_session(tf.Session(config=config))
 
 #os.environ['CUDA_VISIBLE_DEVICES']="1"
 
-DATA_DIR = '../input'
-#DATA_DIR = '/data/krf/dataset'
+#DATA_DIR = '../input'
+DATA_DIR = '/data/krf/dataset'
 # Directory to save logs and trained model
-ROOT_DIR = '../working'
-#ROOT_DIR = '/data/krf/model/rsna'
+#ROOT_DIR = '../working'
+ROOT_DIR = '/data/krf/model/rsna'
 
 # Import Mask RCNN
 sys.path.append(os.path.join(ROOT_DIR, 'Mask_RCNN'))  # To find local version of the library
@@ -35,8 +35,8 @@ import mrcnn.model as modellib
 from mrcnn import visualize
 from mrcnn.model import log
 
-train_dicom_dir = os.path.join(DATA_DIR, 'stage_1_train_images')
-test_dicom_dir = os.path.join(DATA_DIR, 'stage_1_test_images')
+train_dicom_dir = os.path.join(DATA_DIR, 'stage_2_train_images')
+test_dicom_dir = os.path.join(DATA_DIR, 'stage_2_test_images')
 
 COCO_WEIGHTS_PATH = "mask_rcnn_coco.h5"
 
@@ -141,7 +141,7 @@ class DetectorDataset(utils.Dataset):
         return mask.astype(np.bool), class_ids.astype(np.int32)
 
 # training dataset
-anns = pd.read_csv(os.path.join(DATA_DIR, 'stage_1_train_labels.csv'))
+anns = pd.read_csv(os.path.join(DATA_DIR, 'stage_2_train_labels.csv'))
 anns.head()
 
 
@@ -295,7 +295,7 @@ plt.plot(epochs, history["val_mrcnn_bbox_loss"], label="Valid box loss")
 plt.legend()
 
 plt.show()
-plt.savefig(ROOT_DIR+"/log1023.png")
+plt.savefig(ROOT_DIR+"/log1030.png")
 
 best_epoch = np.argmin(history["val_loss"])
 print("Best Epoch:", best_epoch + 1)
@@ -442,7 +442,7 @@ def predict(image_fps, filepath='submission.csv', min_conf=0.95):
 
             file.write(out_str+"\n")
 
-submission_fp = os.path.join(ROOT_DIR, 'submission_1024.csv')
+submission_fp = os.path.join(ROOT_DIR, 'submission_1030.csv')
 predict(test_image_fps, filepath=submission_fp)
 print(submission_fp)
 
